@@ -1,0 +1,902 @@
+---
+title: "Move Classification Error Analysis: Nominal Regression Modeling"
+author: "Ziwei Zhou"
+date: "12/16/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Frist we define several helper functions:
+```{r, warning = FALSE, message = FALSE}
+library(ggplot2)
+library(nnet)
+library(tidyverse)
+library(rockchalk) 
+library(ggplot2)
+library(caret)
+library(mlogit)
+```
+
+```{r}
+###################
+# 1. Preprocessing 
+###################
+# six conditions due human anntator's inconsistency
+preprocess <- function(path, down_sample=FALSE){
+  dat <- read.csv(path)
+  dat <-dat %>% filter(Error.Code.3..Human.!="")
+  dat<-dat %>% filter(pre.OR.difference!=9999)
+  dat<- dat %>% filter(pre.OR.difference!=-9999)
+  dat<- dat %>% filter(pre.OR.difference!="NA")
+  if (grepl('AM1_PM2', path, fixed = TRUE)) {
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("indicative AM","semi-indicative AM"), newLabel = "indicative_AM")
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("indicative MM","semi-indicative MM"), newLabel = "indicative_MM")
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("non-indicative", "non-indicative "), newLabel = "non_indicative")
+    dat_sub <- dat %>% 
+      filter(Error.Code.3..Human.=='indicative_AM'|Error.Code.3..Human.== 'indicative_MM'|Error.Code.3..Human.=='non_indicative')
+    dat_sub$Error.Code.3..Human. <-as.factor(droplevels(dat_sub$Error.Code.3..Human.))
+    dat_sub2 <- dat_sub %>% select(doc,feature,text,pre.OR_m1,pre.OR_m2,pre.OR.difference,post.feature_weight,Error.Code.3..Human.)
+    dat_sub2 <- dat_sub2[!duplicated(dat_sub2$feature), ]
+    dat_sub3 <- downSample(x = dat_sub2, y = dat_sub2$Error.Code.3..Human.) # ** may also try up-sampling?**
+    if (down_sample) {
+      return(dat_sub3)
+    }
+    else {
+      return(dat_sub2)
+    }
+  }
+  if (grepl('AM1_PM3', path, fixed = TRUE)) {
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("indicative AM"), newLabel = "indicative_AM")
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("indicative MM","semi-indicative MM"), newLabel = "indicative_MM")
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("non-indicative"), newLabel = "non_indicative")
+    dat_sub <- dat %>% 
+      filter(Error.Code.3..Human.=='indicative_AM'|Error.Code.3..Human.== 'indicative_MM'|Error.Code.3..Human.=='non_indicative')
+    dat_sub$Error.Code.3..Human. <-as.factor(droplevels(dat_sub$Error.Code.3..Human.))
+    dat_sub2 <- dat_sub %>% select(doc,feature,text,pre.OR_m1,pre.OR_m3,pre.OR.difference,post.feature_weight,Error.Code.3..Human.)
+    dat_sub2 <- dat_sub2[!duplicated(dat_sub2$feature), ]
+    dat_sub3 <- downSample(x = dat_sub2, y = dat_sub2$Error.Code.3..Human.) # ** may also try up-sampling?**
+    if (down_sample) {
+      return(dat_sub3)
+    }
+    else {
+      return(dat_sub2)
+    }
+  }
+  if (grepl('AM2_PM1', path, fixed = TRUE)) {
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("indicative AM","semi-indicative AM","indicative AM "), newLabel = "indicative_AM")
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("indicative MM","semi-indicative MM"), newLabel = "indicative_MM")
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("non-indicative"), newLabel = "non_indicative")
+    dat_sub <- dat %>% 
+      filter(Error.Code.3..Human.=='indicative_AM'|Error.Code.3..Human.== 'indicative_MM'|Error.Code.3..Human.=='non_indicative')
+    dat_sub$Error.Code.3..Human. <-as.factor(droplevels(dat_sub$Error.Code.3..Human.))
+    dat_sub2 <- dat_sub %>% select(doc,feature,text,pre.OR_m1,pre.OR_m2,pre.OR.difference,post.feature_weight,Error.Code.3..Human.)
+    dat_sub2 <- dat_sub2[!duplicated(dat_sub2$feature), ]
+    dat_sub3 <- downSample(x = dat_sub2, y = dat_sub2$Error.Code.3..Human.) # ** may also try up-sampling?**
+    if (down_sample) {
+      return(dat_sub3)
+    }
+    else {
+      return(dat_sub2)
+    }
+  }
+  if (grepl('AM2_PM3', path, fixed = TRUE)) {
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("indicative AM","semi-indicative AM","indicative AM "), newLabel = "indicative_AM")
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("indicative MM","semi-indicative MM"), newLabel = "indicative_MM")
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("non-indicative"), newLabel = "non_indicative")
+    dat_sub <- dat %>% 
+      filter(Error.Code.3..Human.=='indicative_AM'|Error.Code.3..Human.== 'indicative_MM'|Error.Code.3..Human.=='non_indicative')
+    dat_sub$Error.Code.3..Human. <-as.factor(droplevels(dat_sub$Error.Code.3..Human.))
+    dat_sub2 <- dat_sub %>% select(doc,feature,text,pre.OR_m3,pre.OR_m2,pre.OR.difference,post.feature_weight,Error.Code.3..Human.)
+    dat_sub2 <- dat_sub2[!duplicated(dat_sub2$feature), ]
+    dat_sub3 <- downSample(x = dat_sub2, y = dat_sub2$Error.Code.3..Human.) # ** may also try up-sampling?**
+    if (down_sample) {
+      return(dat_sub3)
+    }
+    else {
+      return(dat_sub2)
+    }
+  }
+  if (grepl('AM3_PM1', path, fixed = TRUE)) {
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("indicative AM", "semi-indicative AM"), newLabel = "indicative_AM")
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("indicative MM"), newLabel = "indicative_MM")
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("non-indicative", "non-indicative "), newLabel = "non_indicative")
+    dat_sub <- dat %>% 
+      filter(Error.Code.3..Human.=='indicative_AM'|Error.Code.3..Human.== 'indicative_MM'|Error.Code.3..Human.=='non_indicative')
+    dat_sub$Error.Code.3..Human. <-as.factor(droplevels(dat_sub$Error.Code.3..Human.))
+    dat_sub2 <- dat_sub %>% select(doc,feature,text,pre.OR_m1,pre.OR_m3,pre.OR.difference,post.feature_weight,Error.Code.3..Human.)
+    dat_sub2 <- dat_sub2[!duplicated(dat_sub2$feature), ]
+    dat_sub3 <- downSample(x = dat_sub2, y = dat_sub2$Error.Code.3..Human.) # ** may also try up-sampling?**
+    if (down_sample) {
+      return(dat_sub3)
+    }
+    else {
+      return(dat_sub2)
+    }
+  }
+  if (grepl('AM3_PM2', path, fixed = TRUE)) {
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("indicative AM", "semi-indicative AM"), newLabel = "indicative_AM")
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("indicative MM", "semi-indicative MM"), newLabel = "indicative_MM")
+    dat$Error.Code.3..Human.<- combineLevels(dat$Error.Code.3..Human., levs = c("non-indicative"), newLabel = "non_indicative")
+    dat_sub <- dat %>% 
+      filter(Error.Code.3..Human.=='indicative_AM'|Error.Code.3..Human.== 'indicative_MM'|Error.Code.3..Human.=='non_indicative')
+    dat_sub$Error.Code.3..Human. <-as.factor(droplevels(dat_sub$Error.Code.3..Human.))
+    dat_sub2 <- dat_sub %>% select(doc,feature,text,pre.OR_m3,pre.OR_m2,pre.OR.difference,post.feature_weight,Error.Code.3..Human.)
+    dat_sub2 <- dat_sub2[!duplicated(dat_sub2$feature), ]
+    dat_sub3 <- downSample(x = dat_sub2, y = dat_sub2$Error.Code.3..Human.) # ** may also try up-sampling?**
+    if (down_sample) {
+      return(dat_sub3)
+    }
+    else {
+      return(dat_sub2)
+    }
+  }
+
+}
+
+
+###################
+# 2. Modeling
+###################
+nominals <- function(dat, null=FALSE, pre=FALSE, post=FALSE, prepost=FALSE, full=FALSE) {
+  dat$Error.Code.3..Human. <- relevel(dat$Error.Code.3..Human., ref = "non_indicative")
+  if (null) {
+    null.mod<-  multinom(Error.Code.3..Human. ~ 1, data = dat)
+    return(null.mod)
+  } 
+  if (pre) {
+    pre.odds.mod <- multinom(Error.Code.3..Human. ~ pre.OR.difference, data = dat)
+    return(pre.odds.mod)
+  }
+  if (post) {
+    post.weights.mod <- multinom(Error.Code.3..Human. ~ post.feature_weight, data = dat)
+    return(post.weights.mod)
+  } 
+  if (prepost) {
+    pre.post.mod <- multinom(Error.Code.3..Human. ~ pre.OR.difference + post.feature_weight, data = dat)
+    return(pre.post.mod)
+  }
+  if (full) {
+    full.mod<- multinom(Error.Code.3..Human. ~ pre.OR.difference + post.feature_weight + pre.OR.difference:post.feature_weight, data = dat)
+    return(full.mod)
+  } 
+}
+
+###################
+# 3. Plotting
+###################
+# currently only supports pre.odds.mod
+prob_plot <- function(mod, dat) {
+  p_pre <- predict(mod, type="probs", newdata=dat)
+  p_indicative_AM <- data.frame(p_pre)$indicative_AM
+  p_indicative_MM <- data.frame(p_pre)$indicative_MM
+  p_non_indicative <- data.frame(p_pre)$non_indicative
+  x <- dat$pre.OR.difference
+  plot_data <- data.frame(cbind(x,p_indicative_AM,p_indicative_MM,p_non_indicative))
+  ggplot(data=plot_data) + 
+    xlim(-25,25) +
+    geom_line(aes(x=x,y=p_indicative_AM, color="indicative AM")) + 
+    geom_line(aes(x=x,y=p_indicative_MM, color="indicative MM")) +
+    geom_line(aes(x=x,y=p_non_indicative, color="non-indicative")) + 
+    scale_color_manual(name = "Human Coding Categories", 
+                       values = c("indicative AM" = "blue", "indicative MM" = "red", "non-indicative" = "black")) + 
+    ggtitle("Predicted Probabilities Plots for Pre-Odds Ratio Difference") + xlab("Log Odds Ratio Difference") + ylab("Predicted Probabilities") 
+}
+
+###################
+# 4. Performance
+###################
+eval_train <- function(dat_sub3) {
+  pre.odds.mod <- multinom(Error.Code.3..Human. ~ pre.OR.difference, data = dat_sub3)
+  p_pre <- predict(pre.odds.mod, type="probs", newdata = dat_sub3)
+  d = data.frame(p_pre)
+  pred <- as.factor(colnames(d)[apply(d,1,which.max)])
+  y <- dat_sub3$Error.Code.3..Human.
+  cm <- confusionMatrix(pred, y)
+  return(cm)
+}
+
+perform_10cv <- function(dat_sub3, export=FALSE) {
+  # Evaluations based on 10-fold cv
+  #Randomly shuffle the data
+  dat_sub3$ID <- seq.int(nrow(dat_sub3))
+  set.seed(123)
+  dat_sub3<-dat_sub3[sample(nrow(dat_sub3)),] # note here the rows in dat_sub3 are shuffled
+  #Create 10 equally size folds
+  folds <- cut(seq(1,nrow(dat_sub3)),breaks=10,labels=FALSE)
+  #Perform 10 fold cross validation for the pre.odds model
+  d = NULL # empty dataframe
+  for(i in 1:10){
+    #Segment your data by fold using the which() function 
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    testData <- dat_sub3[testIndexes, ]
+    trainData <- dat_sub3[-testIndexes, ]
+    #Fitting the nominal regression model with pre + post features
+    pre.odds.mod <- multinom(Error.Code.3..Human. ~ pre.OR.difference, data = trainData)
+    p_pre <- predict(pre.odds.mod, type="probs", newdata = testData)
+    index <- testData['ID']
+    d = rbind(d, data.frame(index, p_pre))
+  }
+  d <- d[order(d$ID),]
+  # evaluation
+  d$ID <- NULL
+  pred <- as.factor(colnames(d)[apply(d,1,which.max)])
+  dat_sub3 <- dat_sub3[order(dat_sub3$ID),]
+  if (export) {
+    dat_sub3$pred <- pred
+    write.csv(dat_sub3,'predicted_10cv.csv')
+  }
+  y <- dat_sub3$Error.Code.3..Human.
+  cm <- confusionMatrix(pred, y)
+  return(cm)
+}
+
+get_perform <- function(cm) {
+  # Note: rows are actual values, columns are predicted values
+  # create performance
+  mat <- data.frame(matrix(NA, nrow = 3, ncol = 3))
+  colnames(mat) <- c('Precision', 'Recall', 'F1-Score')
+  rownames(mat) <- c('Indicative-AM', 'Indicative-MM', 'Non-Indicative')
+  # calculate precisions
+  mat[1,1] <-cm[1,1]/(cm[1,1]+cm[2,1]+cm[3,1])
+  mat[2,1] <-cm[2,2]/(cm[1,2]+cm[2,2]+cm[3,2])
+  mat[3,1] <-cm[3,3]/(cm[1,3]+cm[2,3]+cm[3,3])
+  # calculate recalls
+  mat[1,2] <-cm[1,1]/(cm[1,1]+cm[1,2]+cm[1,3])
+  mat[2,2] <-cm[2,2]/(cm[2,1]+cm[2,2]+cm[2,3])
+  mat[3,2] <-cm[3,3]/(cm[3,1]+cm[3,2]+cm[3,3])
+  # calculate f1-scores
+  mat[1,3] <-2*(mat[1,1]*mat[1,2])/(mat[1,1]+mat[1,2])
+  mat[2,3] <-2*(mat[2,1]*mat[2,2])/(mat[2,1]+mat[2,2])
+  mat[3,3] <-2*(mat[3,1]*mat[3,2])/(mat[3,1]+mat[3,2])
+  return(mat)
+}
+```
+
+# 1. Data Preprocessing
+We take the six misclassification data sets and display the descriptive statistics:
+```{r, warning = FALSE, message = FALSE}
+am1_pm2_sub3 <- preprocess("./Original/AM1_PM2_long-18AprilET-extracted.csv", down_sample=TRUE)
+am1_pm3_sub3 <- preprocess("./Original/AM1_PM3_long-18AprilET-extracted.csv", down_sample=TRUE) 
+am2_pm1_sub3 <- preprocess("./Original/AM2_PM1_long-10AprilET-extracted.csv", down_sample=TRUE)
+am2_pm3_sub3 <- preprocess("./Original/AM2_PM3_long_18AprilET-extracted.csv", down_sample=TRUE)
+am3_pm1_sub3 <- preprocess("./Original/AM3_PM1_long-18AprilET-extracted.csv", down_sample=TRUE)
+am3_pm2_sub3 <- preprocess("./Original/AM3_PM2_long-18AprilET-extracted.csv", down_sample=TRUE) 
+```
+
+### AM1_PM2 (Down Sampled)
+```{r}
+table(am1_pm2_sub3$Error.Code.3..Human.)
+print.data.frame(am1_pm2_sub3 %>% group_by(Error.Code.3..Human.) %>% summarise(count=n(),
+                                                              min_pre=min(pre.OR.difference),
+                                                              max_pre=max(pre.OR.difference),
+                                                              average_pre=mean(pre.OR.difference),
+                                                              std_pre=sd(pre.OR.difference),
+                                                              min_post=min(post.feature_weight),
+                                                              max_post=max(post.feature_weight),
+                                                              average_post=mean(post.feature_weight),
+                                                              std_post=sd(post.feature_weight)))
+```
+
+### AM1_PM3 (Down Sampled)
+```{r}
+table(am1_pm3_sub3$Error.Code.3..Human.)
+print.data.frame(am1_pm3_sub3 %>% group_by(Error.Code.3..Human.) %>% summarise(count=n(),
+                                                              min_pre=min(pre.OR.difference),
+                                                              max_pre=max(pre.OR.difference),
+                                                              average_pre=mean(pre.OR.difference),
+                                                              std_pre=sd(pre.OR.difference),
+                                                              min_post=min(post.feature_weight),
+                                                              max_post=max(post.feature_weight),
+                                                              average_post=mean(post.feature_weight),
+                                                              std_post=sd(post.feature_weight)))
+```
+
+### AM2_PM1 (Down Sampled)
+```{r}
+table(am2_pm1_sub3$Error.Code.3..Human.)
+print.data.frame(am2_pm1_sub3 %>% group_by(Error.Code.3..Human.) %>% summarise(count=n(),
+                                                              min_pre=min(pre.OR.difference),
+                                                              max_pre=max(pre.OR.difference),
+                                                              average_pre=mean(pre.OR.difference),
+                                                              std_pre=sd(pre.OR.difference),
+                                                              min_post=min(post.feature_weight),
+                                                              max_post=max(post.feature_weight),
+                                                              average_post=mean(post.feature_weight),
+                                                              std_post=sd(post.feature_weight)))
+```
+
+### AM2_PM3 (Down Sampled)
+```{r}
+table(am2_pm3_sub3$Error.Code.3..Human.)
+print.data.frame(am2_pm3_sub3 %>% group_by(Error.Code.3..Human.) %>% summarise(count=n(),
+                                                              min_pre=min(pre.OR.difference),
+                                                              max_pre=max(pre.OR.difference),
+                                                              average_pre=mean(pre.OR.difference),
+                                                              std_pre=sd(pre.OR.difference),
+                                                              min_post=min(post.feature_weight),
+                                                              max_post=max(post.feature_weight),
+                                                              average_post=mean(post.feature_weight),
+                                                              std_post=sd(post.feature_weight)))
+```
+
+### AM3_PM1 (Down Sampled)
+```{r}
+table(am3_pm1_sub3$Error.Code.3..Human.)
+print.data.frame(am3_pm1_sub3 %>% group_by(Error.Code.3..Human.) %>% summarise(count=n(),
+                                                              min_pre=min(pre.OR.difference),
+                                                              max_pre=max(pre.OR.difference),
+                                                              average_pre=mean(pre.OR.difference),
+                                                              std_pre=sd(pre.OR.difference),
+                                                              min_post=min(post.feature_weight),
+                                                              max_post=max(post.feature_weight),
+                                                              average_post=mean(post.feature_weight),
+                                                              std_post=sd(post.feature_weight)))
+```
+
+### AM3_PM2 (Down sampled)
+```{r}
+table(am3_pm2_sub3$Error.Code.3..Human.)
+print.data.frame(am3_pm2_sub3 %>% group_by(Error.Code.3..Human.) %>% summarise(count=n(),
+                                                              min_pre=min(pre.OR.difference),
+                                                              max_pre=max(pre.OR.difference),
+                                                              average_pre=mean(pre.OR.difference),
+                                                              std_pre=sd(pre.OR.difference),
+                                                              min_post=min(post.feature_weight),
+                                                              max_post=max(post.feature_weight),
+                                                              average_post=mean(post.feature_weight),
+                                                              std_post=sd(post.feature_weight)))
+```
+
+# 2. Modeling
+## Fitting Null Models (six data sets X 2 versions)
+```{r}
+am1_pm2_sub3_null.mod <- nominals(am1_pm2_sub3, null=TRUE)
+am1_pm3_sub3_null.mod <- nominals(am1_pm3_sub3, null=TRUE)
+am2_pm1_sub3_null.mod <- nominals(am2_pm1_sub3, null=TRUE)
+am2_pm3_sub3_null.mod <- nominals(am2_pm3_sub3, null=TRUE)
+am3_pm1_sub3_null.mod <- nominals(am3_pm1_sub3, null=TRUE)
+am3_pm2_sub3_null.mod <- nominals(am2_pm1_sub3, null=TRUE)
+```
+
+## Fitting ORD Models (six data sets X 2 versions)
+```{r}
+am1_pm2_sub3_pre.mod <- nominals(am1_pm2_sub3, pre=TRUE)
+am1_pm3_sub3_pre.mod <- nominals(am1_pm3_sub3, pre=TRUE)
+am2_pm1_sub3_pre.mod <- nominals(am2_pm1_sub3, pre=TRUE)
+am2_pm3_sub3_pre.mod <- nominals(am2_pm3_sub3, pre=TRUE)
+am3_pm1_sub3_pre.mod <- nominals(am3_pm1_sub3, pre=TRUE)
+am3_pm2_sub3_pre.mod <- nominals(am2_pm1_sub3, pre=TRUE)
+```
+
+## Fitting FW Models (six data sets X 2 versions)
+```{r}
+am1_pm2_sub3_post.mod <- nominals(am1_pm2_sub3, post=TRUE)
+am1_pm3_sub3_post.mod <- nominals(am1_pm3_sub3, post=TRUE)
+am2_pm1_sub3_post.mod <- nominals(am2_pm1_sub3, post=TRUE)
+am2_pm3_sub3_post.mod <- nominals(am2_pm3_sub3, post=TRUE)
+am3_pm1_sub3_post.mod <- nominals(am3_pm1_sub3, post=TRUE)
+am3_pm2_sub3_post.mod <- nominals(am2_pm1_sub3, post=TRUE)
+```
+
+## Fitting Both Models (six data sets X 2 versions)
+```{r}
+am1_pm2_sub3_prepost.mod <- nominals(am1_pm2_sub3, prepost=TRUE)
+am1_pm3_sub3_prepost.mod <- nominals(am1_pm3_sub3, prepost=TRUE)
+am2_pm1_sub3_prepost.mod <- nominals(am2_pm1_sub3, prepost=TRUE)
+am2_pm3_sub3_prepost.mod <- nominals(am2_pm3_sub3, prepost=TRUE)
+am3_pm1_sub3_prepost.mod <- nominals(am3_pm1_sub3, prepost=TRUE)
+am3_pm2_sub3_prepost.mod <- nominals(am2_pm1_sub3, prepost=TRUE)
+```
+
+## Fitting Interaction Models (six data sets X 2 versions)
+```{r}
+am1_pm2_sub3_full.mod <- nominals(am1_pm2_sub3, full=TRUE)
+am1_pm3_sub3_full.mod <- nominals(am1_pm3_sub3, full=TRUE)
+am2_pm1_sub3_full.mod <- nominals(am2_pm1_sub3, full=TRUE)
+am2_pm3_sub3_full.mod <- nominals(am2_pm3_sub3, full=TRUE)
+am3_pm1_sub3_full.mod <- nominals(am3_pm1_sub3, full=TRUE)
+am3_pm2_sub3_full.mod <- nominals(am2_pm1_sub3, full=TRUE)
+```
+
+# 3. Model Comparison/ Selection
+## Null vs. ORD
+AM1_PM2 (Downsampled)
+```{r}
+anova(am1_pm2_sub3_null.mod,am1_pm2_sub3_pre.mod)
+AIC(am1_pm2_sub3_null.mod)
+BIC(am1_pm2_sub3_null.mod)
+am1_pm2_sub3_null.mod$deviance
+AIC(am1_pm2_sub3_pre.mod)
+BIC(am1_pm2_sub3_pre.mod)
+am1_pm2_sub3_pre.mod$deviance
+```
+
+AM1_PM3 (Downsampled)
+```{r}
+anova(am1_pm3_sub3_null.mod,am1_pm3_sub3_pre.mod)
+AIC(am1_pm3_sub3_null.mod)
+BIC(am1_pm3_sub3_null.mod)
+am1_pm3_sub3_null.mod$deviance
+AIC(am1_pm3_sub3_pre.mod)
+BIC(am1_pm3_sub3_pre.mod)
+am1_pm3_sub3_pre.mod$deviance
+```
+
+AM2_PM1 (Downsampled)
+```{r}
+anova(am2_pm1_sub3_null.mod,am2_pm1_sub3_pre.mod)
+AIC(am2_pm1_sub3_null.mod)
+BIC(am2_pm1_sub3_null.mod)
+am2_pm1_sub3_null.mod$deviance
+AIC(am2_pm1_sub3_pre.mod)
+BIC(am2_pm1_sub3_pre.mod)
+am2_pm1_sub3_pre.mod$deviance
+```
+
+AM2_PM3 (Downsampled)
+```{r}
+anova(am2_pm3_sub3_null.mod,am2_pm3_sub3_pre.mod)
+AIC(am2_pm3_sub3_null.mod)
+BIC(am2_pm3_sub3_null.mod)
+am2_pm3_sub3_null.mod$deviance
+AIC(am2_pm3_sub3_pre.mod)
+BIC(am2_pm3_sub3_pre.mod)
+am2_pm3_sub3_pre.mod$deviance
+```
+
+AM3_PM1 (Downsampled)
+```{r}
+anova(am3_pm1_sub3_null.mod,am3_pm1_sub3_pre.mod)
+AIC(am3_pm1_sub3_null.mod)
+BIC(am3_pm1_sub3_null.mod)
+am3_pm1_sub3_null.mod$deviance
+AIC(am3_pm1_sub3_pre.mod)
+BIC(am3_pm1_sub3_pre.mod)
+am3_pm1_sub3_pre.mod$deviance
+```
+
+AM3_PM2 (Downsampled)
+```{r}
+anova(am3_pm2_sub3_null.mod,am3_pm2_sub3_pre.mod)
+AIC(am3_pm2_sub3_null.mod)
+BIC(am3_pm2_sub3_null.mod)
+am3_pm2_sub3_null.mod$deviance
+AIC(am3_pm2_sub3_pre.mod)
+BIC(am3_pm2_sub3_pre.mod)
+am3_pm2_sub3_pre.mod$deviance
+```
+
+## Null vs. FW
+AM1_PM2 (Downsampled)
+```{r}
+anova(am1_pm2_sub3_null.mod,am1_pm2_sub3_post.mod)
+AIC(am1_pm2_sub3_null.mod)
+BIC(am1_pm2_sub3_null.mod)
+am1_pm2_sub3_null.mod$deviance
+AIC(am1_pm2_sub3_post.mod)
+BIC(am1_pm2_sub3_post.mod)
+am1_pm2_sub3_post.mod$deviance
+```
+
+AM1_PM3 (Downsampled)
+```{r}
+anova(am1_pm3_sub3_null.mod,am1_pm3_sub3_post.mod)
+AIC(am1_pm3_sub3_null.mod)
+BIC(am1_pm3_sub3_null.mod)
+am1_pm3_sub3_null.mod$deviance
+AIC(am1_pm3_sub3_post.mod)
+BIC(am1_pm3_sub3_post.mod)
+am1_pm3_sub3_post.mod$deviance
+```
+
+AM2_PM1 (Downsampled)
+```{r}
+anova(am2_pm1_sub3_null.mod,am2_pm1_sub3_post.mod)
+AIC(am2_pm1_sub3_null.mod)
+BIC(am2_pm1_sub3_null.mod)
+am2_pm1_sub3_null.mod$deviance
+AIC(am2_pm1_sub3_post.mod)
+BIC(am2_pm1_sub3_post.mod)
+am2_pm1_sub3_post.mod$deviance
+```
+
+AM2_PM3 (Downsampled)
+```{r}
+anova(am2_pm3_sub3_null.mod,am2_pm3_sub3_post.mod)
+AIC(am2_pm3_sub3_null.mod)
+BIC(am2_pm3_sub3_null.mod)
+am2_pm3_sub3_null.mod$deviance
+AIC(am2_pm3_sub3_post.mod)
+BIC(am2_pm3_sub3_post.mod)
+am2_pm3_sub3_post.mod$deviance
+```
+
+AM3_PM1 (Downsampled)
+```{r}
+anova(am3_pm1_sub3_null.mod,am3_pm1_sub3_post.mod)
+AIC(am3_pm1_sub3_null.mod)
+BIC(am3_pm1_sub3_null.mod)
+am3_pm1_sub3_null.mod$deviance
+AIC(am3_pm1_sub3_post.mod)
+BIC(am3_pm1_sub3_post.mod)
+am3_pm1_sub3_post.mod$deviance
+```
+
+AM3_PM2 (Downsampled)
+```{r}
+anova(am3_pm2_sub3_null.mod,am3_pm2_sub3_post.mod)
+AIC(am3_pm2_sub3_null.mod)
+BIC(am3_pm2_sub3_null.mod)
+am3_pm2_sub3_null.mod$deviance
+AIC(am3_pm2_sub3_post.mod)
+BIC(am3_pm2_sub3_post.mod)
+am3_pm2_sub3_post.mod$deviance
+```
+
+## ORD vs. Both
+AM1_PM2 (Downsampled)
+```{r}
+anova(am1_pm2_sub3_pre.mod,am1_pm2_sub3_prepost.mod)
+AIC(am1_pm2_sub3_pre.mod)
+BIC(am1_pm2_sub3_pre.mod)
+am1_pm2_sub3_pre.mod$deviance
+AIC(am1_pm2_sub3_prepost.mod)
+BIC(am1_pm2_sub3_prepost.mod)
+am1_pm2_sub3_prepost.mod$deviance
+```
+
+AM1_PM3 (Downsampled)
+```{r}
+anova(am1_pm3_sub3_pre.mod,am1_pm3_sub3_prepost.mod)
+AIC(am1_pm3_sub3_pre.mod)
+BIC(am1_pm3_sub3_pre.mod)
+am1_pm3_sub3_pre.mod$deviance
+AIC(am1_pm3_sub3_prepost.mod)
+BIC(am1_pm3_sub3_prepost.mod)
+am1_pm3_sub3_prepost.mod$deviance
+```
+
+AM2_PM1 (Downsampled)
+```{r}
+anova(am2_pm1_sub3_pre.mod,am2_pm1_sub3_prepost.mod)
+AIC(am2_pm1_sub3_pre.mod)
+BIC(am2_pm1_sub3_pre.mod)
+am2_pm1_sub3_pre.mod$deviance
+AIC(am2_pm1_sub3_prepost.mod)
+BIC(am2_pm1_sub3_prepost.mod)
+am2_pm1_sub3_prepost.mod$deviance
+```
+
+AM2_PM3 (Downsampled)
+```{r}
+anova(am2_pm3_sub3_pre.mod,am2_pm3_sub3_prepost.mod)
+AIC(am2_pm3_sub3_pre.mod)
+BIC(am2_pm3_sub3_pre.mod)
+am2_pm3_sub3_pre.mod$deviance
+AIC(am2_pm3_sub3_prepost.mod)
+BIC(am2_pm3_sub3_prepost.mod)
+am2_pm3_sub3_prepost.mod$deviance
+```
+
+AM3_PM1 (Downsampled)
+```{r}
+anova(am3_pm1_sub3_pre.mod,am3_pm1_sub3_prepost.mod)
+AIC(am3_pm1_sub3_pre.mod)
+BIC(am3_pm1_sub3_pre.mod)
+am3_pm1_sub3_pre.mod$deviance
+AIC(am3_pm1_sub3_prepost.mod)
+BIC(am3_pm1_sub3_prepost.mod)
+am3_pm1_sub3_prepost.mod$deviance
+```
+
+AM3_PM2 (Downsampled)
+```{r}
+anova(am3_pm2_sub3_pre.mod,am3_pm2_sub3_prepost.mod)
+AIC(am3_pm2_sub3_pre.mod)
+BIC(am3_pm2_sub3_pre.mod)
+am3_pm2_sub3_pre.mod$deviance
+AIC(am3_pm2_sub3_prepost.mod)
+BIC(am3_pm2_sub3_prepost.mod)
+am3_pm2_sub3_prepost.mod$deviance
+```
+
+## FW vs. Both
+AM1_PM2 (Downsampled)
+```{r}
+anova(am1_pm2_sub3_post.mod,am1_pm2_sub3_prepost.mod)
+AIC(am1_pm2_sub3_post.mod)
+BIC(am1_pm2_sub3_post.mod)
+am1_pm2_sub3_post.mod$deviance
+AIC(am1_pm2_sub3_prepost.mod)
+BIC(am1_pm2_sub3_prepost.mod)
+am1_pm2_sub3_prepost.mod$deviance
+```
+
+AM1_PM3 (Downsampled)
+```{r}
+anova(am1_pm3_sub3_post.mod,am1_pm3_sub3_prepost.mod)
+AIC(am1_pm3_sub3_post.mod)
+BIC(am1_pm3_sub3_post.mod)
+am1_pm3_sub3_post.mod$deviance
+AIC(am1_pm3_sub3_prepost.mod)
+BIC(am1_pm3_sub3_prepost.mod)
+am1_pm3_sub3_prepost.mod$deviance
+```
+
+AM2_PM1 (Downsampled)
+```{r}
+anova(am2_pm1_sub3_post.mod,am2_pm1_sub3_prepost.mod)
+AIC(am2_pm1_sub3_post.mod)
+BIC(am2_pm1_sub3_post.mod)
+am2_pm1_sub3_post.mod$deviance
+AIC(am2_pm1_sub3_prepost.mod)
+BIC(am2_pm1_sub3_prepost.mod)
+am2_pm1_sub3_prepost.mod$deviance
+```
+
+AM2_PM3 (Downsampled)
+```{r}
+anova(am2_pm3_sub3_post.mod,am2_pm3_sub3_prepost.mod)
+AIC(am2_pm3_sub3_post.mod)
+BIC(am2_pm3_sub3_post.mod)
+am2_pm3_sub3_post.mod$deviance
+AIC(am2_pm3_sub3_prepost.mod)
+BIC(am2_pm3_sub3_prepost.mod)
+am2_pm3_sub3_prepost.mod$deviance
+```
+
+AM3_PM1 (Downsampled)
+```{r}
+anova(am3_pm1_sub3_post.mod,am3_pm1_sub3_prepost.mod)
+AIC(am3_pm1_sub3_post.mod)
+BIC(am3_pm1_sub3_post.mod)
+am3_pm1_sub3_post.mod$deviance
+AIC(am3_pm1_sub3_prepost.mod)
+BIC(am3_pm1_sub3_prepost.mod)
+am3_pm1_sub3_prepost.mod$deviance
+```
+
+AM3_PM2 (Downsampled)
+```{r}
+anova(am3_pm2_sub3_post.mod,am3_pm2_sub3_prepost.mod)
+AIC(am3_pm2_sub3_post.mod)
+BIC(am3_pm2_sub3_post.mod)
+am3_pm2_sub3_post.mod$deviance
+AIC(am3_pm2_sub3_prepost.mod)
+BIC(am3_pm2_sub3_prepost.mod)
+am3_pm2_sub3_prepost.mod$deviance
+```
+
+## Both vs. Interaction
+AM1_PM2 (Downsampled)
+```{r}
+anova(am1_pm2_sub3_prepost.mod,am1_pm2_sub3_full.mod)
+AIC(am1_pm2_sub3_prepost.mod)
+BIC(am1_pm2_sub3_prepost.mod)
+am1_pm2_sub3_prepost.mod$deviance
+AIC(am1_pm2_sub3_full.mod)
+BIC(am1_pm2_sub3_full.mod)
+am1_pm2_sub3_full.mod$deviance
+```
+
+AM1_PM3 (Downsampled)
+```{r}
+anova(am1_pm3_sub3_prepost.mod,am1_pm3_sub3_full.mod)
+AIC(am1_pm3_sub3_prepost.mod)
+BIC(am1_pm3_sub3_prepost.mod)
+am1_pm3_sub3_prepost.mod$deviance
+AIC(am1_pm3_sub3_full.mod)
+BIC(am1_pm3_sub3_full.mod)
+am1_pm3_sub3_full.mod$deviance
+```
+
+AM2_PM1 (Downsampled)
+```{r}
+anova(am2_pm1_sub3_prepost.mod,am2_pm1_sub3_full.mod)
+AIC(am2_pm1_sub3_prepost.mod)
+BIC(am2_pm1_sub3_prepost.mod)
+am2_pm1_sub3_prepost.mod$deviance
+AIC(am2_pm1_sub3_full.mod)
+BIC(am2_pm1_sub3_full.mod)
+am2_pm1_sub3_full.mod$deviance
+```
+
+AM2_PM3 (Downsampled)
+```{r}
+anova(am2_pm3_sub3_prepost.mod,am2_pm3_sub3_full.mod)
+AIC(am2_pm3_sub3_prepost.mod)
+BIC(am2_pm3_sub3_prepost.mod)
+am2_pm3_sub3_prepost.mod$deviance
+AIC(am2_pm3_sub3_full.mod)
+BIC(am2_pm3_sub3_full.mod)
+am2_pm3_sub3_full.mod$deviance
+```
+
+AM3_PM1 (Downsampled)
+```{r}
+anova(am3_pm1_sub3_prepost.mod,am3_pm1_sub3_full.mod)
+AIC(am3_pm1_sub3_prepost.mod)
+BIC(am3_pm1_sub3_prepost.mod)
+am3_pm1_sub3_prepost.mod$deviance
+AIC(am3_pm1_sub3_full.mod)
+BIC(am3_pm1_sub3_full.mod)
+am3_pm1_sub3_full.mod$deviance
+```
+
+AM3_PM2 (Downsampled)
+```{r}
+anova(am3_pm2_sub3_prepost.mod,am3_pm2_sub3_full.mod)
+AIC(am3_pm2_sub3_prepost.mod)
+BIC(am3_pm2_sub3_prepost.mod)
+am3_pm2_sub3_prepost.mod$deviance
+AIC(am3_pm2_sub3_full.mod)
+BIC(am3_pm2_sub3_full.mod)
+am3_pm2_sub3_full.mod$deviance
+```
+
+### As we can conclude that ORD is more important than FW, here we only show the coefficients from the ORD models:
+## AM1_PM2 (Down Sampled)
+```{r}
+am1_pm2_sub3_fit_mlogit <- mlogit(Error.Code.3..Human. ~ 0 | pre.OR.difference, data = am1_pm2_sub3, shape = "wide", reflevel = "non_indicative")
+summary(am1_pm2_sub3_fit_mlogit) 
+```
+
+## AM1_PM3 (Down Sampled)
+```{r}
+am1_pm3_sub3_fit_mlogit <- mlogit(Error.Code.3..Human. ~ 0 | pre.OR.difference, data = am1_pm3_sub3, shape = "wide", reflevel = "non_indicative")
+summary(am1_pm3_sub3_fit_mlogit) 
+```
+
+## AM2_PM1 (Down Sampled)
+```{r}
+am2_pm1_sub3_fit_mlogit <- mlogit(Error.Code.3..Human. ~ 0 | pre.OR.difference, data = am2_pm1_sub3, shape = "wide", reflevel = "non_indicative")
+summary(am2_pm1_sub3_fit_mlogit) 
+```
+
+## AM2_PM3 (Down Sampled)
+```{r}
+am2_pm3_sub3_fit_mlogit <- mlogit(Error.Code.3..Human. ~ 0 | pre.OR.difference, data = am2_pm3_sub3, shape = "wide", reflevel = "non_indicative")
+summary(am2_pm3_sub3_fit_mlogit) 
+```
+
+## AM3_PM1 (Down Sampled)
+```{r}
+am3_pm1_sub3_fit_mlogit <- mlogit(Error.Code.3..Human. ~ 0 | pre.OR.difference, data = am3_pm1_sub3, shape = "wide", reflevel = "non_indicative")
+summary(am3_pm1_sub3_fit_mlogit) 
+```
+
+## AM3_PM2 (Down Sampled)
+```{r}
+am3_pm2_sub3_fit_mlogit <- mlogit(Error.Code.3..Human. ~ 0 | pre.OR.difference, data = am3_pm2_sub3, shape = "wide", reflevel = "non_indicative")
+summary(am3_pm2_sub3_fit_mlogit) 
+```
+
+
+# 3. Predicted Probability Plots
+## AM1_PM2 (Down Sampled)
+```{r}
+prob_plot(am1_pm2_sub3_pre.mod, am1_pm2_sub3)
+```
+
+## AM1_PM3 (Down Sampled)
+```{r}
+prob_plot(am1_pm3_sub3_pre.mod, am1_pm3_sub3)
+```
+
+## AM2_PM1 (Down Sampled)
+```{r}
+prob_plot(am2_pm1_sub3_pre.mod, am2_pm1_sub3)
+```
+
+## AM2_PM3 (Down Sampled)
+```{r}
+prob_plot(am2_pm3_sub3_pre.mod, am2_pm3_sub3)
+
+```
+
+## AM3_PM1 (Down Sampled)
+```{r}
+prob_plot(am3_pm1_sub3_pre.mod, am3_pm1_sub3)
+```
+
+## AM3_PM2 (Down Sampled)
+```{r}
+prob_plot(am3_pm2_sub3_pre.mod, am3_pm2_sub3)
+
+```
+
+
+# 4. Model Performance (10 Fold Cross-Validation)
+## AM1_PM2 (Down Sampled)
+# Training
+```{r}
+am1_pm2_sub3_cm <- eval_train(am1_pm2_sub3)
+t(am1_pm2_sub3_cm$table)
+get_perform(t(am1_pm2_sub3_cm$table))
+```
+
+# 10-Fold Cross Validation
+```{r}
+am1_pm2_sub3_cm_cv <- perform_10cv(am1_pm2_sub3, export = TRUE)
+t(am1_pm2_sub3_cm_cv$table)
+get_perform(t(am1_pm2_sub3_cm_cv$table))
+```
+
+## AM1_PM3 (Down Sampled)
+# Training
+```{r}
+am1_pm3_sub3_cm <- eval_train(am1_pm3_sub3)
+t(am1_pm3_sub3_cm$table)
+get_perform(t(am1_pm3_sub3_cm$table))
+```
+
+# 10-Fold Cross Validation
+```{r}
+am1_pm3_sub3_cm_cv <- perform_10cv(am1_pm3_sub3, export = TRUE)
+t(am1_pm3_sub3_cm_cv$table)
+get_perform(t(am1_pm3_sub3_cm_cv$table))
+```
+
+## AM2_PM1 (Down Sampled)
+# Training
+```{r}
+am2_pm1_sub3_cm <- eval_train(am2_pm1_sub3)
+t(am2_pm1_sub3_cm$table)
+get_perform(t(am2_pm1_sub3_cm$table))
+```
+
+# 10-Fold Cross Validation
+```{r}
+am2_pm1_sub3_cm_cv <- perform_10cv(am2_pm1_sub3, export = TRUE)
+t(am2_pm1_sub3_cm_cv$table)
+get_perform(t(am2_pm1_sub3_cm_cv$table))
+```
+
+## AM2_PM3 (Down Sampled)
+# Training
+```{r}
+am2_pm3_sub3_cm <- eval_train(am2_pm3_sub3)
+t(am2_pm3_sub3_cm$table)
+get_perform(t(am2_pm3_sub3_cm$table))
+```
+
+# 10-Fold Cross Validation
+```{r}
+am2_pm3_sub3_cm_cv <- perform_10cv(am2_pm3_sub3, export = TRUE)
+t(am2_pm3_sub3_cm_cv$table)
+get_perform(t(am2_pm3_sub3_cm_cv$table))
+```
+
+## AM3_PM1 (Down Sampled)
+# Training
+```{r}
+am3_pm1_sub3_cm <- eval_train(am3_pm1_sub3)
+t(am3_pm1_sub3_cm$table)
+get_perform(t(am3_pm1_sub3_cm$table))
+```
+
+# 10-Fold Cross Validation
+```{r}
+am3_pm1_sub3_cm_cv <- perform_10cv(am3_pm1_sub3, export = TRUE)
+t(am3_pm1_sub3_cm_cv$table)
+get_perform(t(am3_pm1_sub3_cm_cv$table))
+```
+
+## AM3_PM2 (Down Sampled)
+# Training
+```{r}
+am3_pm2_sub3_cm <- eval_train(am3_pm2_sub3)
+t(am3_pm2_sub3_cm$table)
+get_perform(t(am3_pm2_sub3_cm$table))
+```
+
+# 10-Fold Cross Validation
+```{r}
+am3_pm2_sub3_cm_cv <- perform_10cv(am3_pm2_sub3, export = TRUE)
+t(am3_pm2_sub3_cm_cv$table)
+get_perform(t(am3_pm2_sub3_cm_cv$table))
+```
+
